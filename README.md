@@ -17,6 +17,9 @@ Built in a 3-hour hackathon with **Cline**, **Parallel** and **Composio**, plus 
 - **Live waveform** of your actual microphone signal while recording, with a timer and word/line counters.
 - The transcript appears **line by line as a script**, and clinical terms (symptoms, vitals, medications, travel, tests) are **highlighted** as they're spoken.
 - When lines start with `Doctor:` / `Patient:` they get **DR / PT badges**.
+- **Better recognition:** the microphone is opened with noise suppression, echo cancellation and automatic gain. On newer Chrome builds that support it, the recognizer is also given a list of medical terms to listen for (vocabulary boosting).
+- **No lost words:** Chrome stops listening after silence or about 60 seconds. The app restarts it automatically and keeps any words that hadn't been finalized yet.
+- **✦ AI fix:** when you press **End**, Claude corrects misheard medical words (for example "I be profane" → *ibuprofen*, "dangy" → *dengue*, "N S one" → *NS1*), adds punctuation, and labels each turn **Doctor:** or **Patient:**. It never adds anything that wasn't said, and if the result looks rewritten rather than corrected, the original is kept. **Undo AI fix** restores the raw text, and the **✦ AI fix** button runs it again on demand.
 - **Edit the transcript** by hand before generating the note.
 - **Load demo**: a built-in fictional consultation (fever after travel, possible dengue) that types itself in, for demos without a microphone.
 
@@ -136,7 +139,7 @@ Open **<http://localhost:8000>** in Chrome.
 
 ## API
 
-The frontend talks to three JSON endpoints. You can call them directly too.
+The frontend talks to these JSON endpoints. You can call them directly too.
 
 ### `GET /health`
 ```json
@@ -147,6 +150,18 @@ The frontend talks to three JSON endpoints. You can call them directly too.
 Returns the fictional demo consultation.
 ```json
 {"transcript": "Doctor: Good afternoon, what brings you in today?\n..."}
+```
+
+### `POST /api/clean`
+Fixes misheard medical words in a raw microphone transcript and adds `Doctor:` / `Patient:` labels. The UI calls this automatically when recording ends.
+
+Request:
+```json
+{"transcript": "i took i be profane twice ... an N S one test for dangy"}
+```
+Response:
+```json
+{"transcript": "Patient: I took ibuprofen twice. ...\nDoctor: ... an NS1 test for dengue.", "changed": true}
 ```
 
 ### `POST /api/note`
@@ -235,6 +250,7 @@ luca-live/
 | **The record button is disabled, or "needs Google Chrome"** | Use Chrome and allow microphone access. Use `http://localhost`, because Chrome blocks the mic on plain-HTTP non-localhost addresses. |
 | **Emails fail** | Run `python -m mailer.test_send you@example.com` to see the Composio error. Confirm `COMPOSIO_API_KEY` and `COMPOSIO_USER_ID`, and that Gmail is connected for that user in Composio. |
 | **The console shows `[STUB] email to ...`** | The `mailer/` package or `composio` isn't installed, so emails are only printed. Run `pip install -r requirements.txt`. |
+| **Transcription misses or mishears words** | Speak about an arm's length from the mic, one person at a time, with little background noise. A headset or external mic helps a lot. Chrome's recognizer runs on Google's servers, so a stable connection matters. After **End**, the **✦ AI fix** corrects most misheard medical terms, and you can always **Edit transcript** by hand. |
 | **You still see the old design** | Hard-refresh the browser (Cmd+Shift+R / Ctrl+Shift+R). |
 
 ---

@@ -268,7 +268,11 @@
         <textarea id="transcript" placeholder="Transcript (editable)"></textarea>
         <div class="script-tools">
           <span id="lineCount">0 lines</span>
-          <button class="linkbtn" id="editToggle">Edit transcript</button>
+          <span style="display:flex;gap:14px">
+            <button class="linkbtn" id="undoPolish" style="display:none">Undo AI fix</button>
+            <button class="linkbtn" id="polishBtn" title="Fix misheard medical words and label Doctor / Patient">&#10022; AI fix</button>
+            <button class="linkbtn" id="editToggle">Edit transcript</button>
+          </span>
         </div>
       </section>
 
@@ -400,7 +404,10 @@ requestAnimationFrame(drawWave);
 
 async function startAudioViz() {
   try {
-    audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // Clean, level-normalised audio helps recognition a lot (laptop mics, room noise, distance).
+    audioStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }
+    });
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     analyser = audioCtx.createAnalyser(); analyser.fftSize = 1024;
     waveData = new Uint8Array(analyser.fftSize);
@@ -433,34 +440,86 @@ function setEditing(on) {
 }
 $("editToggle").addEventListener("click", () => { if (!recording) setEditing(!editing); });
 
-function startConsultation() {
-  if (!SpeechRec || recording) return;
-  if (editing) setEditing(false);
-  recognition = new SpeechRec();
-  recognition.continuous = true;
-  recognition.interimResults = true;
-  recognition.lang = "en-US";
-  recognition.onresult = (e) => {
+/* Medical vocabulary the recognizer tends to mishear. Used for contextual biasing on browsers
+   that support SpeechRecognition.phrases (newer Chrome); silently skipped elsewhere. */
+const MED_PHRASES = [
+  ["ibuprofen", 6], ["acetaminophen", 6], ["Tylenol", 4], ["Advil", 4], ["aspirin", 4], ["amoxicillin", 5],
+  ["dengue", 7], ["chikungunya", 7], ["Zika", 6], ["malaria", 5], ["leptospirosis", 6],
+  ["NS1", 7], ["NS1 test", 7], ["complete blood count", 5], ["CBC", 5], ["platelets", 5], ["hematocrit", 5],
+  ["tourniquet test", 6], ["petechiae", 6], ["retro-orbital", 6], ["arthralgia", 5], ["myalgia", 5],
+  ["nausea", 4], ["vomiting", 4], ["diarrhea", 4], ["rash", 3], ["fever", 3], ["headache", 3],
+  ["blood pressure", 4], ["heart rate", 4], ["temperature", 3], ["non-tender", 5], ["abdomen", 4],
+  ["allergies", 4], ["medications", 4], ["Puerto Rico", 5], ["hydration", 4], ["fluids", 3]
+];
+
+let pendingInterim = "";   // last interim text; committed if Chrome restarts before finalizing it
+let usingTrack = false;    // whether recognition is fed our cleaned MediaStreamTrack
+
+function newRecognition() {
+  const r = new SpeechRec();
+  r.continuous = true;
+  r.interimResults = true;
+  r.maxAlternatives = 1;
+  r.lang = "en-US";
+  if (window.SpeechRecognitionPhrase && "phrases" in r) {
+    try { r.phrases = MED_PHRASES.map(([p, b]) => new SpeechRecognitionPhrase(p, b)); } catch (_) {}
+  }
+  r.onresult = (e) => {
     let interim = "";
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const t = e.results[i][0].transcript;
       if (e.results[i].isFinal) finalText += t.trim() + "\n";
       else interim += t;
     }
+    pendingInterim = interim.trim();
     renderScript(finalText, interim);
   };
-  recognition.onerror = (e) => {
+  r.onerror = (e) => {
     if (e.error === "not-allowed" || e.error === "service-not-allowed") {
       $("speechNotice").textContent = "Microphone access was denied. Please allow it and try again.";
       $("speechNotice").style.display = "block";
       stopConsultation();
+    } else if (e.error === "phrases-not-supported") {
+      // This engine can't do vocabulary boosting: rebuild without it on the next restart.
+      MED_PHRASES.length = 0;
+    } else if (e.error === "network") {
+      $("speechNotice").textContent = "Speech service unreachable. Check your internet connection (Chrome sends audio to Google for recognition).";
+      $("speechNotice").style.display = "block";
     }
   };
-  recognition.onend = () => { if (recording) { try { recognition.start(); } catch (_) {} } };
+  r.onend = () => {
+    // Chrome ends the session after silence or ~60s. Keep any words it hadn't finalized yet,
+    // then restart so nothing said across the gap is lost.
+    if (pendingInterim) { finalText += pendingInterim + "\n"; pendingInterim = ""; renderScript(finalText); }
+    if (!recording) return;
+    recognition = newRecognition();
+    startRecognizer();
+  };
+  return r;
+}
 
+function startRecognizer() {
+  const track = audioStream && audioStream.getAudioTracks()[0];
+  try {
+    // Prefer our noise-suppressed track (start(audioTrack) on newer Chrome); fall back to the default mic.
+    if (usingTrack && track && track.readyState === "live") recognition.start(track);
+    else recognition.start();
+  } catch (_) {
+    usingTrack = false;
+    try { recognition.start(); } catch (_) {}
+  }
+}
+
+async function startConsultation() {
+  if (!SpeechRec || recording) return;
+  if (editing) setEditing(false);
   recording = true;
-  try { recognition.start(); } catch (_) {}
-  startAudioViz();
+  pendingInterim = "";
+  await startAudioViz();                       // opens the cleaned mic stream (also drives the waveform)
+  if (!recording) { stopAudioViz(); return; }  // user pressed stop while the permission prompt was open
+  usingTrack = !!audioStream;
+  recognition = newRecognition();
+  startRecognizer();
   $("speechNotice").style.display = "none";
   $("scope").classList.add("on");
   $("scopeLabel").textContent = "listening · en-US";
@@ -474,8 +533,9 @@ function startConsultation() {
 function stopConsultation() {
   if (!recording) return;
   recording = false;
-  try { recognition.stop(); } catch (_) {}
-  stopAudioViz();
+  try { if (recognition) recognition.stop(); } catch (_) {}
+  // Give Chrome a moment to deliver the last final result before the mic track is closed.
+  setTimeout(stopAudioViz, 800);
   clearInterval(timerId);
   $("scope").classList.remove("on");
   $("scopeLabel").textContent = "mic idle";
@@ -484,6 +544,38 @@ function stopConsultation() {
   transcriptEl.value = finalText.trim();
   renderScript(finalText);
   endBtn.disabled = true; demoBtn.disabled = false;
+  // Wait for the final words to land, then let Claude fix misheard medical terms.
+  setTimeout(polishTranscript, 1000);
+}
+
+/* ---------- AI polish: fix misheard medical words + add Doctor:/Patient: labels ---------- */
+let rawBeforePolish = "";
+async function polishTranscript() {
+  const raw = finalText.trim();
+  if (!raw || MOCK || recording) return;
+  $("polishBtn").disabled = true;
+  $("lineCount").innerHTML = '<span class="spin"></span>AI is fixing misheard words…';
+  try {
+    const data = await postJSON("/api/clean", { transcript: raw }, 45000);
+    if (recording || finalText.trim() !== raw) return;   // user changed it meanwhile; keep theirs
+    if (data.changed && data.transcript) {
+      rawBeforePolish = raw;
+      finalText = data.transcript.trim() + "\n";
+      transcriptEl.value = finalText.trim();
+      renderScript(finalText);
+      $("undoPolish").style.display = "inline";
+    }
+  } catch (_) { /* keep the raw transcript; polishing is optional */ }
+  finally {
+    $("polishBtn").disabled = false;
+    renderScript(finalText);   // restores the line counter
+  }
+}
+function undoPolish() {
+  if (!rawBeforePolish) return;
+  finalText = rawBeforePolish + "\n"; rawBeforePolish = "";
+  transcriptEl.value = finalText.trim(); renderScript(finalText);
+  $("undoPolish").style.display = "none";
 }
 
 async function useDemo() {
@@ -505,6 +597,8 @@ async function useDemo() {
   if (!$("patientName").value) $("patientName").value = "John Smith";
 }
 
+$("polishBtn").addEventListener("click", () => { if (!recording) { if (editing) setEditing(false); polishTranscript(); } });
+$("undoPolish").addEventListener("click", undoPolish);
 startBtn.addEventListener("click", () => (recording ? stopConsultation() : startConsultation()));
 endBtn.addEventListener("click", stopConsultation);
 demoBtn.addEventListener("click", useDemo);

@@ -18,6 +18,20 @@ Transcript:
 {transcript}
 """
 
+CLEAN_PROMPT = """
+You are correcting a raw speech-to-text transcript of a medical consultation between a doctor and a patient. The browser's speech recognizer often mishears medical words (for example "I be profane" for "ibuprofen", "dangy" for "dengue", "N S one" for "NS1", "a seat a minute often" for "acetaminophen"), drops punctuation, and has no speaker labels.
+
+Rules:
+1. Fix only words that were clearly misrecognized, using the medical context. Keep the speakers' wording otherwise; do not summarize, reorder, or rephrase.
+2. Never add information that was not said. If a word is unclear and you cannot tell what it was, leave it as is.
+3. Add punctuation and split the text into turns. Start each turn with "Doctor:" or "Patient:", inferred from context (the doctor asks questions, examines, and gives the plan; the patient describes symptoms).
+4. Write numbers and units clearly (for example "102.5", "110 over 70").
+5. Output only the corrected transcript, one turn per line, with no commentary.
+
+Raw transcript:
+{transcript}
+"""
+
 WRITE_PROMPT = """
 Using the structured data and the attached research, write: (1) a SOAP clinical note in HTML for the physician, with differential diagnosis, plan, red flags, and linked sources; (2) an HTML summary for the patient in plain language, with no differential diagnosis and no jargon, including instructions and warning signs that require urgent care. Return JSON: {{"doctor_html": "...", "patient_html": "..."}}.
 

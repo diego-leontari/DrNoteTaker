@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-from core.llm import structure, write_notes
+from core.llm import clean_transcript, structure, write_notes
 from core.research import research
 
 load_dotenv()
@@ -81,6 +81,17 @@ def send(req: SendRequest):
         "doctor": {"ok": bool(doctor_result.get("ok", False)), "error": doctor_result.get("error")},
         "patient": {"ok": bool(patient_result.get("ok", False)), "error": patient_result.get("error")},
     }
+
+
+class CleanRequest(BaseModel):
+    transcript: str
+
+
+@app.post("/api/clean")
+def clean(req: CleanRequest):
+    """Polish a raw microphone transcript: fix misheard medical terms, add speaker labels."""
+    cleaned = clean_transcript(req.transcript)
+    return {"transcript": cleaned, "changed": cleaned.strip() != req.transcript.strip()}
 
 
 @app.post("/api/note")

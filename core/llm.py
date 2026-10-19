@@ -6,7 +6,7 @@ import os
 from dotenv import load_dotenv
 from anthropic import Anthropic
 
-from .prompts import STRUCTURE_PROMPT, WRITE_PROMPT
+from .prompts import CLEAN_PROMPT, STRUCTURE_PROMPT, WRITE_PROMPT
 
 load_dotenv()
 
@@ -79,6 +79,29 @@ def structure(transcript: str) -> dict:
     except Exception as exc:  # pragma: no cover - defensive, flow must not break
         print(f"[llm] structure failed: {exc}")
         return _default_structure()
+
+
+def clean_transcript(transcript: str) -> str:
+    """Fix misheard medical terms and add Doctor:/Patient: labels to a raw mic transcript.
+
+    Returns the original text unchanged if Claude is unavailable, fails, or returns
+    something whose length is implausible (a sign it summarized or invented content).
+    """
+    raw = (transcript or "").strip()
+    if not raw or not _get_client():
+        return raw
+    try:
+        cleaned = _ask(CLEAN_PROMPT.format(transcript=raw), 4000).strip()
+        cleaned = cleaned.removeprefix("```").removesuffix("```").strip()
+        # Guardrail: a faithful correction keeps roughly the same length (labels and
+        # punctuation add some). Far shorter or longer means it rewrote the content.
+        if not cleaned or not (0.6 * len(raw) <= len(cleaned) <= 1.8 * len(raw) + 200):
+            print(f"[llm] clean_transcript rejected (raw {len(raw)} chars, cleaned {len(cleaned)} chars)")
+            return raw
+        return cleaned
+    except Exception as exc:  # pragma: no cover - defensive, flow must not break
+        print(f"[llm] clean_transcript failed: {exc}")
+        return raw
 
 
 def _parse_json(text: str) -> dict:
