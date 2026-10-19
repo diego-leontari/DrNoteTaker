@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Doctor Note Taker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&family=Bricolage+Grotesque:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* Palette and type taken from leontari.co (light theme). Variable names are kept from the
+     previous design so every rule below picks up the new values automatically. */
+  :root {
+    --paper:#fbfaf8;            /* Leontari --canvas */
+    --paper-2:#f4f3f0;          /* --surface-2 */
+    --sheet:#ffffff;            /* --surface */
+    --ink:#0c0c14;              /* --ink */
+    --ink-2:#4a4a5c;            /* --ink-muted */
+    --muted:#6b6b84;            /* --ink-faint */
+    --rule:rgba(10,10,20,.09);  /* --hairline */
+    --line:rgba(10,10,20,.18);  /* --hairline-strong */
+    --red:#6d28d9;              /* --accent (primary brand colour, was red) */
+    --teal:#7c3aed;             /* --accent-lt */
+    --amber:#a78bfa;            /* light accent, used for "medium" */
+    --tint:rgba(124,58,237,.08);/* --accent-tint */
+    --danger:#c43c3c;           /* --danger */
+    --ok:#1f7a4a;
+    --sans:'Instrument Sans', system-ui, sans-serif;
+    --serif:'Instrument Serif', Georgia, serif;
+    --mono:'JetBrains Mono', ui-monospace, monospace;
+    --num:'Bricolage Grotesque', 'Instrument Sans', sans-serif;
+    --shadow:0 1px 2px rgba(10,10,20,.04), 0 8px 24px -12px rgba(10,10,20,.12);
+  }
+  * { box-sizing:border-box; }
+  html, body { margin:0; }
+  body { background:var(--paper); color:var(--ink); font-family:var(--sans); font-size:15px; line-height:1.55;
+         -webkit-font-smoothing:antialiased; }
+  /* Leontari pairs a sans body with small uppercase mono labels. */
+  .card-h, .field label, .btn, .tab, .foot, .hud, .script-tools, .edit-hint, .step .s, .lk, .block h5,
+  .flow, .meta, .mast .tag, .elapsed, .timer small, .linkbtn, .sendbar .to { font-family:var(--mono); }
+  ::selection { background:var(--red); color:#fff; }
+  .page { max-width:1320px; margin:0 auto; padding:28px 28px 90px; }
+
+  /* ---------- Masthead ---------- */
+  .mast { display:grid; grid-template-columns:1fr auto; align-items:end; gap:20px;
+          border-bottom:1px solid var(--line); padding-bottom:22px; margin-bottom:30px; }
+  /* Leontari headline: bold tight sans, with one word in serif italic */
+  .mast h1 { font-family:var(--sans); font-weight:600; font-size:clamp(40px,6vw,80px); line-height:1.02;
+             margin:0; letter-spacing:-.035em; }
+  .mast h1 em { font-family:var(--serif); font-style:italic; font-weight:400; color:var(--red); letter-spacing:-.02em; }
+  .mast .tag { font-size:11px; text-transform:uppercase; letter-spacing:.16em; color:var(--muted); margin-top:14px; }
+  .meta { text-align:right; font-size:11px; text-transform:uppercase; letter-spacing:.12em; color:var(--muted); }
+  .meta b { display:block; font-family:var(--num); font-size:24px; letter-spacing:-.02em; color:var(--ink); font-weight:600; text-transform:none; }
+  .mock-tag { display:none; background:var(--tint); color:var(--red); padding:3px 10px; margin-left:10px; font-size:11px;
+              border-radius:999px; font-family:var(--mono); vertical-align:middle; letter-spacing:.1em; }
+
+  /* ---------- Layout ---------- */
+  .grid { display:grid; grid-template-columns:minmax(340px,440px) 1fr; gap:28px; align-items:start; }
+  @media (max-width:980px) { .grid { grid-template-columns:1fr; } }
+  .card { background:var(--sheet); border:1px solid var(--rule); border-radius:10px; box-shadow:var(--shadow);
+          margin-bottom:28px; overflow:hidden; }
+  .card-h { display:flex; justify-content:space-between; align-items:center; padding:12px 18px;
+            border-bottom:1px solid var(--rule); font-size:11px; text-transform:uppercase; letter-spacing:.16em; color:var(--ink-2); }
+  .card-h .n { font-family:var(--serif); font-style:italic; font-size:22px; letter-spacing:0; text-transform:none; color:var(--red); }
+  .card-b { padding:16px; }
+
+  /* ---------- Intake ---------- */
+  .field { display:grid; grid-template-columns:96px 1fr; align-items:center; border-bottom:1px solid var(--rule); }
+  .field:last-child { border-bottom:0; }
+  .field label { font-size:11px; text-transform:uppercase; letter-spacing:.14em; color:var(--muted); }
+  .field input { border:0; background:transparent; font:inherit; font-size:16px; font-weight:500;
+                 padding:13px 0; color:var(--ink); outline:none; width:100%; }
+  .field input::placeholder { color:#b4b4c2; font-weight:400; }
+  .field:focus-within label { color:var(--red); }
+
+  /* ---------- Recorder (Leontari's dark canvas #07070b, violet signal) ---------- */
+  .scope { position:relative; height:120px; background:#07070b; overflow:hidden;
+           background-image:linear-gradient(rgba(167,139,250,.08) 1px, transparent 1px),
+                            linear-gradient(90deg, rgba(167,139,250,.08) 1px, transparent 1px);
+           background-size:16px 16px; }
+  .scope canvas { width:100%; height:100%; display:block; }
+  .scope .hud { position:absolute; top:9px; left:12px; right:12px; display:flex; justify-content:space-between;
+                color:#8a8a98; font-size:11px; letter-spacing:.14em; text-transform:uppercase; }
+  .scope .hud .live-dot { color:#f26b6b; display:none; }
+  .scope.on .hud .live-dot { display:inline; animation:blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity:0; } }
+  .controls { display:flex; align-items:center; gap:14px; padding:16px 18px; border-bottom:1px solid var(--rule); }
+  .rec-btn { width:60px; height:60px; border-radius:50%; border:0; background:var(--red);
+             cursor:pointer; position:relative; flex:none; transition:transform .15s, box-shadow .2s;
+             box-shadow:0 0 0 6px var(--tint), 0 6px 18px -6px rgba(109,40,217,.6); }
+  .rec-btn::after { content:""; position:absolute; inset:21px; background:#fff; border-radius:50%; transition:all .2s; }
+  .rec-btn.on { background:var(--danger); box-shadow:0 0 0 6px rgba(196,60,60,.12); animation:recpulse 1.4s infinite; }
+  .rec-btn.on::after { border-radius:3px; inset:22px; }
+  @keyframes recpulse { 50% { box-shadow:0 0 0 12px rgba(196,60,60,.06); } }
+  .rec-btn:active { transform:scale(.95); }
+  .rec-btn:disabled { background:var(--paper-2); box-shadow:none; cursor:not-allowed; }
+  .timer { font-family:var(--num); font-size:32px; font-weight:600; letter-spacing:-.02em; font-variant-numeric:tabular-nums; line-height:1.1; }
+  .timer small { display:block; font-size:10px; letter-spacing:.16em; color:var(--muted); text-transform:uppercase; font-weight:400; }
+  .controls .spacer { flex:1; }
+  /* Leontari buttons: 6px radius, solid violet primary, quiet outline secondary */
+  .btn { font-size:11px; text-transform:uppercase; letter-spacing:.12em; padding:10px 14px; border-radius:6px; font-weight:500;
+         border:1px solid var(--line); background:var(--sheet); color:var(--ink); cursor:pointer; transition:all .2s ease; }
+  .btn:hover:not(:disabled) { border-color:var(--red); color:var(--red); background:var(--tint); }
+  .btn:disabled { opacity:.4; cursor:not-allowed; }
+  .btn.primary { background:var(--red); border-color:var(--red); color:#fff; font-family:var(--sans); font-weight:600;
+                 text-transform:none; letter-spacing:-.01em; box-shadow:0 8px 20px -10px rgba(109,40,217,.7); }
+  .btn.primary:hover:not(:disabled) { background:var(--teal); border-color:var(--teal); color:#fff; transform:translateY(-1px); }
+  .btn.big { width:100%; padding:16px; font-size:16px; }
+  .notice { display:none; padding:10px 18px; background:var(--tint); border-bottom:1px solid var(--rule); color:var(--red); font-size:13px; }
+
+  /* ---------- Transcript (screenplay) ---------- */
+  .script { max-height:360px; min-height:200px; overflow:auto; padding:18px; font-size:14px; }
+  .script .line { display:grid; grid-template-columns:26px 1fr; gap:10px; margin:0 0 10px; animation:rise .3s ease; }
+  .script .sp { font-family:var(--mono); font-size:9px; font-weight:600; width:26px; height:20px; display:grid; place-items:center;
+                border-radius:4px; background:var(--paper-2); color:var(--muted); margin-top:1px; }
+  .script .sp.dr { background:var(--red); color:#fff; }
+  .script .sp.pt { background:var(--tint); color:var(--red); }
+  .script .interim { color:var(--muted); font-style:italic; }
+  .script .empty { color:var(--muted); font-family:var(--serif); font-style:italic; font-size:20px; text-align:center; padding:40px 10px; line-height:1.3; }
+  .script mark { background:var(--tint); color:var(--red); border-radius:3px; padding:0 3px; font-weight:500; }
+  @keyframes rise { from { opacity:0; transform:translateY(4px); } }
+  textarea#transcript { display:none; width:100%; min-height:260px; border:0; border-top:1px solid var(--rule);
+                        background:transparent; font:inherit; font-size:13px; padding:16px 18px; resize:vertical; outline:none; color:var(--ink); }
+  .script-tools { display:flex; justify-content:space-between; align-items:center; padding:8px 16px;
+                  border-top:1px solid var(--ink); font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.12em; }
+  .linkbtn { background:none; border:0; font:inherit; color:var(--ink); text-decoration:underline; cursor:pointer; padding:0; text-transform:uppercase; letter-spacing:.12em; }
+  .linkbtn:hover { color:var(--red); }
+
+  /* ---------- Right column: the chart ---------- */
+  .chart { min-height:640px; position:relative; }
+  .chart-empty { padding:70px 40px; text-align:center; }
+  .chart-empty .big { font-family:var(--sans); font-size:46px; line-height:1.02; margin:0 0 16px; font-weight:600; letter-spacing:-.035em; }
+  .chart-empty .big em { font-family:var(--serif); font-style:italic; font-weight:400; color:var(--red); letter-spacing:-.02em; }
+  .chart-empty p { color:var(--ink-2); max-width:440px; margin:0 auto 26px; }
+  .flow { display:flex; justify-content:center; gap:8px; margin-top:30px; font-size:11px; text-transform:uppercase; letter-spacing:.1em; flex-wrap:wrap; }
+  .flow span { padding:7px 12px; border:1px solid var(--rule); border-radius:999px; background:var(--sheet); color:var(--ink-2); }
+  .flow span b { color:var(--red); margin-right:6px; }
+  /* Pipeline progress */
+  .pipeline { display:none; padding:40px; }
+  .pipeline.on { display:block; }
+  .pipeline h3 { font-family:var(--serif); font-style:italic; font-weight:400; font-size:38px; margin:0 0 6px; color:var(--red); }
+  .pipeline .sub { color:var(--muted); margin:0 0 28px; font-size:13px; }
+  .step { display:grid; grid-template-columns:36px 1fr auto; gap:14px; align-items:center; padding:16px 0; border-top:1px solid var(--rule); }
+  .step:last-child { border-bottom:1px solid var(--rule); }
+  .step .ix { width:36px; height:36px; border-radius:50%; background:var(--paper-2); color:var(--muted); display:grid; place-items:center;
+              font-family:var(--num); font-weight:600; font-size:15px; transition:all .3s; }
+  .step .t { font-weight:600; letter-spacing:-.01em; }
+  .step .d { font-size:13px; color:var(--muted); }
+  .step .s { font-size:11px; text-transform:uppercase; letter-spacing:.14em; color:var(--muted); }
+  .step.active .ix { background:var(--red); color:#fff; animation:pulse 1.4s infinite; }
+  .step.active .s { color:var(--red); }
+  .step.done .ix { background:var(--tint); color:var(--red); }
+  .step.done .s { color:var(--ok); }
+  @keyframes pulse { 0%,100% { box-shadow:0 0 0 0 rgba(109,40,217,.35); } 50% { box-shadow:0 0 0 9px rgba(109,40,217,0); } }
+  .elapsed { margin-top:22px; font-size:12px; color:var(--muted); }
+
+  /* Result */
+  .result { display:none; }
+  .result.on { display:block; }
+  .tabs { display:flex; gap:4px; padding:8px 10px 0; border-bottom:1px solid var(--rule); background:var(--paper-2); }
+  .tab { flex:1; background:transparent; border:0; border-radius:6px 6px 0 0; padding:12px; font-size:11px;
+         text-transform:uppercase; letter-spacing:.14em; cursor:pointer; color:var(--muted); transition:color .2s; }
+  .tab:hover { color:var(--ink); }
+  .tab.active { background:var(--sheet); color:var(--ink); font-weight:600; box-shadow:inset 0 -2px 0 var(--red); }
+  .tab .c { font-family:var(--num); font-weight:600; letter-spacing:0; color:#fff; background:var(--red); border-radius:999px;
+            padding:1px 7px; margin-left:8px; font-size:10px; }
+  .tab .c:empty { display:none; }
+  .pane { display:none; }
+  .pane.active { display:block; }
+  .editor { padding:28px 34px; min-height:520px; outline:none; font-family:var(--sans); font-size:15px; color:var(--ink); }
+  .editor:focus { box-shadow:inset 0 0 0 2px var(--tint); }
+  .edit-hint { font-size:11px; color:var(--muted); padding:9px 18px; border-bottom:1px solid var(--rule); text-transform:uppercase; letter-spacing:.12em; }
+
+  /* Differential: likelihood meter */
+  .ddx { padding:24px 30px; }
+  .ddx-row { display:grid; grid-template-columns:1fr 150px; gap:18px; padding:16px 0; border-bottom:1px solid var(--rule); }
+  .ddx-row h4 { margin:0 0 4px; font-family:var(--sans); font-size:19px; font-weight:600; letter-spacing:-.02em; }
+  .ddx-row p { margin:0; font-size:13px; color:var(--ink-2); }
+  .meter { display:flex; gap:3px; padding-top:6px; }
+  .meter i { flex:1; height:8px; border-radius:999px; background:var(--paper-2); }
+  .meter i.f { background:var(--red); }
+  .meter.medium i.f { background:var(--amber); }
+  .meter.low i.f { background:#c9c9d4; }
+  .lk { font-size:10px; text-transform:uppercase; letter-spacing:.14em; margin-top:6px; text-align:right; color:var(--muted); }
+  .blocks { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; margin-top:24px; }
+  .block { background:var(--paper-2); border-radius:10px; padding:14px 16px; }
+  .block h5 { margin:0 0 8px; font-size:11px; text-transform:uppercase; letter-spacing:.16em; color:var(--ink-2); }
+  .block.rf { background:rgba(196,60,60,.06); }
+  .block.rf h5 { color:var(--danger); }
+  .block ul { margin:0; padding-left:18px; font-size:13px; }
+  .block li { margin-bottom:6px; }
+  .sources { margin-top:24px; border-top:1px solid var(--line); padding-top:14px; counter-reset:src; }
+  .sources .block { background:none; padding:0 0 6px; }
+  .sources a { display:block; color:var(--ink); text-decoration:none; font-size:13px; padding:8px 0; border-bottom:1px solid var(--rule); transition:color .2s; }
+  .sources a::before { counter-increment:src; content:counter(src, decimal-leading-zero) "  "; color:var(--red); font-family:var(--mono); font-size:11px; }
+  .sources a:hover { color:var(--red); }
+  .sources a span { color:var(--muted); margin-left:8px; font-family:var(--mono); font-size:11px; }
+
+  .warnings { display:none; padding:10px 18px; background:var(--tint); border-bottom:1px solid var(--rule); color:var(--red); font-size:13px; }
+  .warnings ul { margin:4px 0 0; padding-left:18px; }
+  .err { color:var(--danger); font-size:13px; }
+  #noteError:not(:empty) { padding:14px 18px; border-bottom:1px solid var(--rule); background:rgba(196,60,60,.06); }
+
+  /* Send bar: approve with a stamp */
+  .sendbar { display:none; grid-template-columns:1fr auto; gap:20px; align-items:center; padding:18px 22px; border-top:1px solid var(--rule); background:var(--paper-2); }
+  .sendbar.on { display:grid; }
+  .sendbar .to { font-size:12px; color:var(--muted); line-height:1.8; }
+  .sendbar .to b { color:var(--ink); font-family:var(--sans); font-weight:600; }
+  .stamp-btn { font-family:var(--sans); font-size:16px; font-weight:600; letter-spacing:-.01em;
+               color:#fff; background:var(--red); border:0; border-radius:6px; padding:14px 26px; cursor:pointer;
+               box-shadow:0 10px 24px -10px rgba(109,40,217,.8); transition:all .2s ease; }
+  .stamp-btn:hover:not(:disabled) { background:var(--teal); transform:translateY(-1px); }
+  .stamp-btn:disabled { opacity:.4; cursor:not-allowed; }
+  .send-result { padding:0 22px 16px; background:var(--paper-2); font-size:13px; }
+  .send-result:empty { display:none; }
+  .ok { color:var(--ok); }
+  .stamped { position:absolute; top:76px; right:40px; font-family:var(--serif); font-style:italic; font-size:40px; color:var(--red);
+             border:2px solid var(--red); border-radius:10px; padding:4px 22px; transform:rotate(-10deg) scale(2); opacity:0; pointer-events:none;
+             background:rgba(255,255,255,.85); z-index:3; }
+  .stamped.on { animation:stamp .45s cubic-bezier(.2,1.6,.4,1) forwards; }
+  @keyframes stamp { to { transform:rotate(-10deg) scale(1); opacity:1; } }
+
+  .hidden { display:none !important; }
+  .foot { position:fixed; left:0; right:0; bottom:0; background:#07070b; color:#8a8a98; font-size:11px; text-transform:uppercase;
+          letter-spacing:.14em; padding:10px 22px; display:flex; justify-content:space-between; gap:20px; z-index:5; }
+  .foot b { color:#a78bfa; font-weight:500; }
+  .spin { display:inline-block; width:10px; height:10px; border:2px solid currentColor; border-right-color:transparent; border-radius:50%; animation:sp .8s linear infinite; vertical-align:middle; margin-right:6px; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="mast">
+    <div>
+      <h1>Doctor <em>Note</em> Taker<span class="mock-tag" id="mockTag">MOCK</span></h1>
+      <div class="tag">You talk to the patient &mdash; the chart writes itself</div>
+    </div>
+    <div class="meta"><b id="today"></b>Visit No. <span id="visitNo"></span></div>
+  </header>
+
+  <div class="grid">
+    <!-- ================= LEFT: intake + recorder ================= -->
+    <div>
+      <section class="card">
+        <div class="card-h"><span>Intake</span><span class="n">i.</span></div>
+        <div class="card-b" style="padding-top:4px;padding-bottom:4px">
+          <div class="field"><label for="patientName">Patient</label><input id="patientName" type="text" placeholder="John Smith" autocomplete="off"></div>
+          <div class="field"><label for="patientEmail">Patient @</label><input id="patientEmail" type="email" placeholder="patient@example.com"></div>
+          <div class="field"><label for="doctorEmail">Doctor @</label><input id="doctorEmail" type="email" placeholder="doctor@example.com"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-h"><span>The consultation</span><span class="n">ii.</span></div>
+        <div class="notice" id="speechNotice">Live transcription needs Google Chrome.</div>
+        <div class="scope" id="scope">
+          <canvas id="wave"></canvas>
+          <div class="hud"><span><span class="live-dot">&#9679; REC</span> <span id="scopeLabel">mic idle</span></span><span id="wordCount">0 words</span></div>
+        </div>
+        <div class="controls">
+          <button class="rec-btn" id="startBtn" title="Start consultation" aria-label="Start consultation"></button>
+          <div class="timer"><small id="recState">Press to record</small><span id="timer">00:00</span></div>
+          <div class="spacer"></div>
+          <button class="btn" id="endBtn" disabled>End</button>
+          <button class="btn" id="demoBtn">Load demo</button>
+        </div>
+        <div class="script" id="live"><div class="empty">The conversation will appear here,<br>line by line, as it&rsquo;s spoken.</div></div>
+        <textarea id="transcript" placeholder="Transcript (editable)"></textarea>
+        <div class="script-tools">
+          <span id="lineCount">0 lines</span>
+          <button class="linkbtn" id="editToggle">Edit transcript</button>
+        </div>
+      </section>
+
+      <button class="btn primary big" id="generateBtn">Write the chart &rarr;</button>
+    </div>
+
+    <!-- ================= RIGHT: the chart ================= -->
+    <section class="card chart" id="chart">
+      <div class="card-h"><span>The chart</span><span class="n">iii.</span></div>
+
+      <div class="chart-empty" id="chartEmpty">
+        <p class="big">Nothing charted <em>yet.</em></p>
+        <p>Record the visit (or load the demo), then press <b>Write the chart</b>. The note is drafted, checked against live medical sources, and handed back to you to edit before anything is sent.</p>
+        <div class="flow"><span><b>01</b>Listen</span><span><b>02</b>Structure</span><span><b>03</b>Research</span><span><b>04</b>Write</span><span><b>05</b>You approve</span></div>
+      </div>
+
+      <div class="pipeline" id="loader">
+        <h3>Charting&hellip;</h3>
+        <p class="sub" id="loaderMsg">Usually about 40 seconds. Live web research takes most of that time.</p>
+        <div class="step" data-step="0"><div class="ix">1</div><div><div class="t">Structuring the consultation</div><div class="d">Claude separates doctor from patient and extracts the facts</div></div><div class="s">waiting</div></div>
+        <div class="step" data-step="1"><div class="ix">2</div><div><div class="t">Researching the differential</div><div class="d">Parallel searches CDC, WHO, NIH &amp; PubMed live</div></div><div class="s">waiting</div></div>
+        <div class="step" data-step="2"><div class="ix">3</div><div><div class="t">Writing both notes</div><div class="d">A SOAP note for you, a plain-language summary for the patient</div></div><div class="s">waiting</div></div>
+        <div class="elapsed" id="elapsed">0s elapsed</div>
+      </div>
+
+      <div class="err" id="noteError"></div>
+      <div class="warnings" id="warnings"></div>
+
+      <div class="result" id="noteArea">
+        <div class="stamped" id="stamped">Sent</div>
+        <div class="tabs">
+          <button class="tab active" data-tab="doctor">SOAP note</button>
+          <button class="tab" data-tab="ddx">Differential<span class="c" id="ddxCount"></span></button>
+          <button class="tab" data-tab="patient">For the patient</button>
+        </div>
+        <div class="pane active" data-pane="doctor">
+          <div class="edit-hint">&#9998; Click anywhere in the note to edit &mdash; what you see is what gets emailed</div>
+          <div class="editor" id="doctorEditor" contenteditable="true"></div>
+        </div>
+        <div class="pane" data-pane="ddx"><div class="ddx" id="ddx"></div></div>
+        <div class="pane" data-pane="patient">
+          <div class="edit-hint">&#9998; Plain language, no jargon &mdash; editable</div>
+          <div class="editor" id="patientEditor" contenteditable="true"></div>
+        </div>
+        <div class="sendbar" id="sendbar">
+          <div class="to">Note &rarr; <b id="toDoctor">doctor</b><br>Summary &rarr; <b id="toPatient">patient</b></div>
+          <button class="stamp-btn" id="sendBtn" disabled>Approve &amp; send</button>
+        </div>
+        <div class="send-result" id="sendResult"></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="foot"><span><b>&#9632;</b> Fictional demo data only</span><span>Decision support &mdash; does not replace clinical judgment</span></div>
+<script>
+const MOCK = new URLSearchParams(location.search).has("mock");
+const $ = (id) => document.getElementById(id);
+const startBtn = $("startBtn"), endBtn = $("endBtn"), demoBtn = $("demoBtn");
+const live = $("live"), transcriptEl = $("transcript"), timerEl = $("timer");
+const generateBtn = $("generateBtn"), sendBtn = $("sendBtn");
+if (MOCK) $("mockTag").style.display = "inline-block";
+
+$("today").textContent = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+$("visitNo").textContent = String(Math.floor(Math.random() * 9000) + 1000);
+
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+}
+
+/* ---------- Clinical keyword highlighting in the live script ---------- */
+const CLINICAL = /\b(fever|headache|nausea|vomit\w*|rash|spots?|bleed\w*|pain|aches?|joints?|cough|dizz\w*|allerg\w*|ibuprofen|acetaminophen|aspirin|blood pressure|heart rate|temperature|\d{2,3}(?:\.\d)?(?: over \d{2,3})?|travel\w*|platelets?|NS1|dengue)\b/gi;
+function highlight(text) { return escapeHtml(text).replace(CLINICAL, "<mark>$1</mark>"); }
+
+/* Render the transcript as a screenplay. Speaker is detected from "Doctor:" / "Patient:"
+   prefixes when present (demo); live mic text has no labels, so it shows as neutral lines. */
+function renderScript(text, interim) {
+  const lines = (text || "").split(/\n+/).map((l) => l.trim()).filter(Boolean);
+  if (!lines.length && !interim) {
+    live.innerHTML = '<div class="empty">The conversation will appear here,<br>line by line, as it&rsquo;s spoken.</div>';
+  } else {
+    live.innerHTML = lines.map((l) => {
+      const m = l.match(/^(doctor|dr\.?|patient|pt)\s*:\s*(.*)$/i);
+      const who = m ? (/^p/i.test(m[1]) ? "pt" : "dr") : "";
+      const body = m ? m[2] : l;
+      const badge = who ? `<span class="sp ${who}">${who === "dr" ? "DR" : "PT"}</span>` : '<span class="sp">&middot;</span>';
+      return `<div class="line">${badge}<div>${highlight(body)}</div></div>`;
+    }).join("") + (interim ? `<div class="line"><span class="sp">&hellip;</span><div class="interim">${escapeHtml(interim)}</div></div>` : "");
+  }
+  live.scrollTop = live.scrollHeight;
+  const words = (text + " " + (interim || "")).trim().split(/\s+/).filter(Boolean).length;
+  $("wordCount").textContent = words + " words";
+  $("lineCount").textContent = lines.length + " lines";
+}
+
+/* ---------- Oscilloscope: real mic waveform while recording, idle flatline otherwise ---------- */
+const canvas = $("wave"), ctx2d = canvas.getContext("2d");
+let analyser = null, audioStream = null, audioCtx = null, waveData = null, phase = 0;
+function sizeCanvas() { canvas.width = canvas.clientWidth * devicePixelRatio; canvas.height = canvas.clientHeight * devicePixelRatio; }
+window.addEventListener("resize", sizeCanvas); sizeCanvas();
+function drawWave() {
+  const w = canvas.width, h = canvas.height;
+  ctx2d.clearRect(0, 0, w, h);
+  ctx2d.lineWidth = 2 * devicePixelRatio;
+  ctx2d.strokeStyle = analyser ? "#a78bfa" : "rgba(167,139,250,.4)";  /* Leontari light accent */
+  ctx2d.shadowColor = "#7c3aed"; ctx2d.shadowBlur = analyser ? 14 : 0;
+  ctx2d.beginPath();
+  if (analyser) {
+    analyser.getByteTimeDomainData(waveData);
+    for (let i = 0; i < waveData.length; i++) {
+      const x = (i / (waveData.length - 1)) * w, y = (waveData[i] / 255) * h;
+      i ? ctx2d.lineTo(x, y) : ctx2d.moveTo(x, y);
+    }
+  } else {
+    phase += 0.04;
+    for (let x = 0; x <= w; x += 4) {
+      // idle "ECG" blip every ~third of the width
+      const t = (x / w * 3 + phase) % 1;
+      const blip = t > .48 && t < .52 ? Math.sin((t - .48) / .04 * Math.PI) * h * .28 : 0;
+      const y = h / 2 - blip;
+      x ? ctx2d.lineTo(x, y) : ctx2d.moveTo(x, y);
+    }
+  }
+  ctx2d.stroke();
+  requestAnimationFrame(drawWave);
+}
+requestAnimationFrame(drawWave);
+
+async function startAudioViz() {
+  try {
+    audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioCtx.createAnalyser(); analyser.fftSize = 1024;
+    waveData = new Uint8Array(analyser.fftSize);
+    audioCtx.createMediaStreamSource(audioStream).connect(analyser);
+  } catch (_) { analyser = null; /* visual only; speech recognition still works */ }
+}
+function stopAudioViz() {
+  if (audioStream) audioStream.getTracks().forEach((t) => t.stop());
+  if (audioCtx) audioCtx.close();
+  analyser = null; audioStream = null; audioCtx = null;
+}
+/* ---------- Live transcription (Web Speech API, en-US) ---------- */
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition = null, recording = false, finalText = "", timerId = null, startedAt = 0, editing = false;
+
+if (!SpeechRec) { $("speechNotice").style.display = "block"; startBtn.disabled = true; }
+
+function tick() {
+  const s = Math.floor((Date.now() - startedAt) / 1000);
+  timerEl.textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+}
+
+function setEditing(on) {
+  editing = on;
+  if (on) { transcriptEl.value = finalText.trim(); }
+  else { finalText = transcriptEl.value.trim() ? transcriptEl.value.trim() + "\n" : ""; renderScript(finalText); }
+  transcriptEl.style.display = on ? "block" : "none";
+  live.style.display = on ? "none" : "block";
+  $("editToggle").textContent = on ? "Done editing" : "Edit transcript";
+}
+$("editToggle").addEventListener("click", () => { if (!recording) setEditing(!editing); });
+
+function startConsultation() {
+  if (!SpeechRec || recording) return;
+  if (editing) setEditing(false);
+  recognition = new SpeechRec();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = "en-US";
+  recognition.onresult = (e) => {
+    let interim = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) finalText += t.trim() + "\n";
+      else interim += t;
+    }
+    renderScript(finalText, interim);
+  };
+  recognition.onerror = (e) => {
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+      $("speechNotice").textContent = "Microphone access was denied. Please allow it and try again.";
+      $("speechNotice").style.display = "block";
+      stopConsultation();
+    }
+  };
+  recognition.onend = () => { if (recording) { try { recognition.start(); } catch (_) {} } };
+
+  recording = true;
+  try { recognition.start(); } catch (_) {}
+  startAudioViz();
+  $("speechNotice").style.display = "none";
+  $("scope").classList.add("on");
+  $("scopeLabel").textContent = "listening · en-US";
+  $("recState").textContent = "Recording";
+  startBtn.classList.add("on");
+  startedAt = Date.now(); timerEl.textContent = "00:00"; timerId = setInterval(tick, 500);
+  renderScript(finalText);
+  endBtn.disabled = false; demoBtn.disabled = true;
+}
+
+function stopConsultation() {
+  if (!recording) return;
+  recording = false;
+  try { recognition.stop(); } catch (_) {}
+  stopAudioViz();
+  clearInterval(timerId);
+  $("scope").classList.remove("on");
+  $("scopeLabel").textContent = "mic idle";
+  $("recState").textContent = "Stopped";
+  startBtn.classList.remove("on");
+  transcriptEl.value = finalText.trim();
+  renderScript(finalText);
+  endBtn.disabled = true; demoBtn.disabled = false;
+}
+
+async function useDemo() {
+  let text = "";
+  try {
+    const res = await fetch("/api/demo");
+    if (res.ok) text = (await res.json()).transcript || "";
+  } catch (_) {}
+  if (editing) setEditing(false);
+  finalText = "";
+  renderScript("");
+  // Type the demo in line by line so it feels like a live visit.
+  for (const line of text.split("\n").filter(Boolean)) {
+    finalText += line + "\n";
+    renderScript(finalText);
+    await sleep(160);
+  }
+  transcriptEl.value = finalText.trim();
+  if (!$("patientName").value) $("patientName").value = "John Smith";
+}
+
+startBtn.addEventListener("click", () => (recording ? stopConsultation() : startConsultation()));
+endBtn.addEventListener("click", stopConsultation);
+demoBtn.addEventListener("click", useDemo);
+/* ---------- Generate the chart ---------- */
+// Approximate stage timings measured on the real backend (structure ~3s, research ~25s, write ~14s).
+const STAGE_AT = [0, 4, 30];
+let pipeTimer = null;
+
+function showLoader(on) {
+  clearInterval(pipeTimer);
+  $("loader").classList.toggle("on", on);
+  if (!on) return;
+  const steps = [...document.querySelectorAll(".step")];
+  const t0 = Date.now();
+  const paint = () => {
+    const s = (Date.now() - t0) / 1000;
+    const cur = STAGE_AT.filter((x) => s >= x).length - 1;
+    steps.forEach((el, i) => {
+      el.classList.toggle("done", i < cur);
+      el.classList.toggle("active", i === cur);
+      el.querySelector(".s").innerHTML = i < cur ? "done" : i === cur ? '<span class="spin"></span>working' : "waiting";
+    });
+    $("elapsed").textContent = Math.floor(s) + "s elapsed" + (s > 75 ? " · taking longer than usual, still working…" : "");
+  };
+  paint(); pipeTimer = setInterval(paint, 500);
+}
+
+async function postJSON(url, payload, timeoutMs) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: ctl.signal });
+    if (!res.ok) throw new Error("Server responded with status " + res.status);
+    return await res.json();
+  } catch (e) {
+    if (e.name === "AbortError") throw new Error("The server took too long to respond");
+    throw e;
+  } finally { clearTimeout(t); }
+}
+
+function showWarnings(list) {
+  const box = $("warnings");
+  box.innerHTML = list && list.length ? "<b>Heads up</b><ul>" + list.map((w) => "<li>" + escapeHtml(w) + "</li>").join("") + "</ul>" : "";
+  box.style.display = list && list.length ? "block" : "none";
+}
+
+function renderDdx(r) {
+  r = r || {};
+  const dd = r.differential_diagnosis || [];
+  const lvl = { high: 5, medium: 3, low: 1 };
+  const list = (title, items, cls) => items && items.length
+    ? `<div class="block ${cls || ""}"><h5>${title}</h5><ul>${items.map((x) => "<li>" + escapeHtml(x) + "</li>").join("")}</ul></div>` : "";
+  $("ddxCount").textContent = dd.length ? dd.length : "";
+  if (!dd.length) { $("ddx").innerHTML = '<p class="err">No research results were returned for this visit.</p>'; return; }
+  $("ddx").innerHTML =
+    dd.map((d) => {
+      const l = (d.likelihood || "low").toLowerCase(), n = lvl[l] || 1;
+      const name = String(d.diagnosis || "").replace(/\s*[—-]\s*(high|medium|low)\s+likelihood.*$/i, "");
+      return `<div class="ddx-row"><div><h4>${escapeHtml(name)}</h4><p>${escapeHtml(d.rationale || "")}</p></div>
+              <div><div class="meter ${l}">${[1,2,3,4,5].map((i) => `<i class="${i <= n ? "f" : ""}"></i>`).join("")}</div><div class="lk">${escapeHtml(l)} likelihood</div></div></div>`;
+    }).join("") +
+    `<div class="blocks">${list("Red flags", r.red_flags, "rf")}${list("Suggested tests", r.suggested_tests)}${list("Suggested management", r.suggested_management)}</div>` +
+    ((r.sources || []).length ? `<div class="sources"><div class="block"><h5>Sources &middot; live web research by Parallel</h5></div>${
+      r.sources.filter((s) => s && s.url).map((s) => { let host = ""; try { host = new URL(s.url).hostname.replace(/^www\./, ""); } catch (_) {}
+        return `<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${escapeHtml(s.title || s.url)}<span>${escapeHtml(host)}</span></a>`; }).join("")}</div>` : "");
+}
+
+function setView(v) { // "empty" | "loading" | "result"
+  $("chartEmpty").classList.toggle("hidden", v !== "empty");
+  showLoader(v === "loading");
+  $("noteArea").classList.toggle("on", v === "result");
+  $("sendbar").classList.toggle("on", v === "result");
+}
+async function generateNote() {
+  $("noteError").textContent = ""; $("sendResult").innerHTML = ""; $("stamped").classList.remove("on");
+  if (recording) stopConsultation();
+  if (editing) setEditing(false);
+  const transcript = (finalText || transcriptEl.value).trim();
+  if (!transcript) { $("noteError").textContent = "The transcript is empty. Record the visit or click “Load demo”."; return; }
+  const payload = { transcript, patient_name: $("patientName").value.trim(), patient_email: $("patientEmail").value.trim(), doctor_email: $("doctorEmail").value.trim() };
+
+  generateBtn.disabled = true; sendBtn.disabled = true; showWarnings([]);
+  setView("loading");
+  try {
+    const data = MOCK ? (await sleep(2500), { doctor_html: "<h2>Mock SOAP note</h2>", patient_html: "<h2>Mock summary</h2>", research: {}, warnings: ["Mock mode"] })
+                      : await postJSON("/api/note", payload, 150000);
+    $("doctorEditor").innerHTML = data.doctor_html || "";
+    $("patientEditor").innerHTML = data.patient_html || "";
+    renderDdx(data.research);
+    showWarnings(data.warnings);
+    $("toDoctor").textContent = payload.doctor_email || "doctor (email missing)";
+    $("toPatient").textContent = payload.patient_email || "patient (email missing)";
+    setView("result");
+    sendBtn.disabled = false;
+  } catch (err) {
+    setView("empty");
+    $("noteError").textContent = "We couldn’t write the chart. Please try again. (" + err.message + ")";
+  } finally { generateBtn.disabled = false; }
+}
+generateBtn.addEventListener("click", generateNote);
+
+document.querySelectorAll(".tab").forEach((tab) => tab.addEventListener("click", () => {
+  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === tab));
+  document.querySelectorAll(".pane").forEach((p) => p.classList.toggle("active", p.dataset.pane === tab.dataset.tab));
+}));
+
+/* ---------- Approve & send ---------- */
+const resultLine = (ok, okText, errPrefix, error) => ok
+  ? `<div class="ok">&#10003; ${okText}</div>` : `<div class="err">&#10007; ${errPrefix}: ${escapeHtml(error || "Unknown error")}</div>`;
+
+async function approveAndSend() {
+  const payload = { patient_name: $("patientName").value.trim(), patient_email: $("patientEmail").value.trim(), doctor_email: $("doctorEmail").value.trim(),
+                    doctor_html: $("doctorEditor").innerHTML, patient_html: $("patientEditor").innerHTML };
+  const out = $("sendResult");
+  if (!payload.doctor_email || !payload.patient_email) { out.innerHTML = '<div class="err">Enter both the doctor and patient email in Intake.</div>'; return; }
+  sendBtn.disabled = true; sendBtn.innerHTML = '<span class="spin"></span>Sending';
+  try {
+    const data = MOCK ? (await sleep(1500), { doctor: { ok: true }, patient: { ok: true } }) : await postJSON("/api/send", payload, 60000);
+    const d = data.doctor || {}, p = data.patient || {};
+    out.innerHTML = resultLine(d.ok, "Clinical note sent to " + escapeHtml(payload.doctor_email), "Doctor email failed", d.error) +
+                    resultLine(p.ok, "Visit summary sent to " + escapeHtml(payload.patient_email), "Patient email failed", p.error);
+    if (d.ok && p.ok) $("stamped").classList.add("on");
+  } catch (err) {
+    out.innerHTML = '<div class="err">The emails could not be sent. Please try again. (' + escapeHtml(err.message) + ")</div>";
+  } finally { sendBtn.disabled = false; sendBtn.innerHTML = "Approve &amp; send"; }
+}
+sendBtn.addEventListener("click", approveAndSend);
+["patientEmail", "doctorEmail"].forEach((id) => $(id).addEventListener("input", () => {
+  $("toDoctor").textContent = $("doctorEmail").value || "doctor";
+  $("toPatient").textContent = $("patientEmail").value || "patient";
+}));
+</script>
+</body>
+</html>

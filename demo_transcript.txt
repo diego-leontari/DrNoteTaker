@@ -1,0 +1,14 @@
+Doctor: Good afternoon, what brings you in today?
+Patient: For the past three days I've had a fever, a really bad headache behind my eyes, and my whole body aches, especially my joints.
+Doctor: Have you checked your temperature?
+Patient: Yes, it got to 102.5 last night. And this morning I noticed some small red spots on my chest.
+Doctor: Have you traveled anywhere recently?
+Patient: I was in Puerto Rico last week.
+Doctor: Any vomiting, belly pain, or bleeding from your gums or nose?
+Patient: A bit of nausea, but no vomiting. No bleeding.
+Doctor: Are you taking any medications? Any allergies?
+Patient: I took ibuprofen twice. No allergies.
+Doctor: Any previous medical conditions?
+Patient: None.
+Doctor: Let me check your vitals. Blood pressure 110 over 70, heart rate 98, temperature 101.5. Abdomen is soft and non-tender. Tourniquet test is negative.
+Doctor: I'm ordering a complete blood count with platelets and an NS1 test for dengue. For now, stop the ibuprofen, take acetaminophen instead, and drink plenty of fluids.
