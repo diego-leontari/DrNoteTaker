@@ -510,19 +510,110 @@ function startRecognizer() {
   }
 }
 
+/* ---------- Soniox real-time STT (used when the server has SONIOX_API_KEY) ---------- */
+let sttProvider = "browser";          // "soniox" | "browser"; set from /api/stt-config
+let sonioxRec = null;                 // active Soniox Recording
+let sonioxLines = [];                 // finalized turns: [{ speaker, text }]
+let sonioxModule = null;
+fetch("/api/stt-config").then((r) => r.json()).then((c) => { sttProvider = c.provider || "browser"; if (sttProvider === "soniox") startBtn.disabled = false; }).catch(() => {});
+
+// Speaker numbers from Soniox diarization -> labels. The first voice heard is assumed to be the doctor.
+let speakerMap = {};
+function speakerLabel(id) {
+  if (id == null) return "";
+  if (!(id in speakerMap)) speakerMap[id] = Object.keys(speakerMap).length === 0 ? "Doctor" : Object.keys(speakerMap).length === 1 ? "Patient" : "Speaker " + id;
+  return speakerMap[id];
+}
+function sonioxText() {
+  return sonioxLines.map((l) => (l.speaker ? l.speaker + ": " : "") + l.text.trim()).filter((l) => l.replace(/^[^:]+:\s*/, "")).join("\n");
+}
+
+async function startSoniox() {
+  sonioxModule = sonioxModule || await import("https://esm.sh/@soniox/client@2.4.0");
+  const { SonioxClient, MicrophoneSource } = sonioxModule;
+  const client = new SonioxClient({
+    config: async () => {
+      const res = await fetch("/api/soniox-key", { method: "POST" });
+      if (!res.ok) throw new Error("Could not get a Soniox key (HTTP " + res.status + ")");
+      return { api_key: (await res.json()).api_key };
+    },
+  });
+  // Keep whatever was already in the transcript (e.g. after a pause) as its own block.
+  const prior = finalText.trim();
+  sonioxLines = prior ? [{ speaker: "", text: prior }] : [];
+  speakerMap = {};
+  sonioxRec = client.realtime.record({
+    model: "stt-rt-v5",
+    language_hints: ["en"],
+    enable_speaker_diarization: true,
+    auto_reconnect: true,
+    context: {
+      general: [{ key: "domain", value: "medical consultation between a doctor and a patient" }],
+      terms: MED_PHRASES.map(([p]) => p),
+    },
+    // Soniox's own mic capture, but with clean-audio processing on (the SDK default turns it off).
+    source: new MicrophoneSource({
+      constraints: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
+    }),
+  });
+  sonioxRec.on("result", (result) => {
+    let interim = "";
+    for (const t of result.tokens || []) {
+      if (!t.text || t.text === "<end>" || t.text === "<fin>") continue;
+      if (t.is_final) {
+        const who = speakerLabel(t.speaker);
+        const last = sonioxLines[sonioxLines.length - 1];
+        if (last && last.speaker === who) last.text += t.text;
+        else sonioxLines.push({ speaker: who, text: t.text.replace(/^\s+/, "") });
+      } else interim += t.text;
+    }
+    finalText = sonioxText() + "\n";
+    renderScript(finalText, interim.trim());
+  });
+  sonioxRec.on("error", (err) => {
+    console.error("[soniox]", err);
+    $("speechNotice").textContent = "Soniox error: " + (err && err.message ? err.message : err) + " — switching to Chrome's built-in recognition.";
+    $("speechNotice").style.display = "block";
+    fallbackToBrowser();
+  });
+}
+
+function fallbackToBrowser() {
+  if (sonioxRec) { try { sonioxRec.cancel(); } catch (_) {} sonioxRec = null; }
+  sttProvider = "browser";
+  if (!recording || !SpeechRec) return;
+  usingTrack = !!audioStream;
+  recognition = newRecognition();
+  startRecognizer();
+  $("scopeLabel").textContent = "listening · Chrome · en-US";
+}
+
 async function startConsultation() {
-  if (!SpeechRec || recording) return;
+  if (recording || (!SpeechRec && sttProvider !== "soniox")) return;
   if (editing) setEditing(false);
   recording = true;
   pendingInterim = "";
   await startAudioViz();                       // opens the cleaned mic stream (also drives the waveform)
   if (!recording) { stopAudioViz(); return; }  // user pressed stop while the permission prompt was open
-  usingTrack = !!audioStream;
-  recognition = newRecognition();
-  startRecognizer();
-  $("speechNotice").style.display = "none";
+  let engine = "Chrome";
+  if (sttProvider === "soniox") {
+    try { await startSoniox(); engine = "Soniox"; }
+    catch (err) {
+      console.error("[soniox] start failed", err);
+      $("speechNotice").textContent = "Soniox unavailable (" + (err && err.message ? err.message : err) + "). Using Chrome's built-in recognition.";
+      $("speechNotice").style.display = "block";
+      sttProvider = "browser";
+    }
+  }
+  if (engine === "Chrome") {
+    if (!SpeechRec) { recording = false; stopAudioViz(); return; }
+    usingTrack = !!audioStream;
+    recognition = newRecognition();
+    startRecognizer();
+    $("speechNotice").style.display = "none";
+  }
   $("scope").classList.add("on");
-  $("scopeLabel").textContent = "listening · en-US";
+  $("scopeLabel").textContent = "listening · " + engine + " · en-US";
   $("recState").textContent = "Recording";
   startBtn.classList.add("on");
   startedAt = Date.now(); timerEl.textContent = "00:00"; timerId = setInterval(tick, 500);
@@ -533,9 +624,22 @@ async function startConsultation() {
 function stopConsultation() {
   if (!recording) return;
   recording = false;
+  const usedSoniox = !!sonioxRec;
   try { if (recognition) recognition.stop(); } catch (_) {}
-  // Give Chrome a moment to deliver the last final result before the mic track is closed.
-  setTimeout(stopAudioViz, 800);
+  if (sonioxRec) {
+    // stop() waits for Soniox to finalize the last words; then refresh the transcript and polish it.
+    const rec = sonioxRec; sonioxRec = null;
+    rec.stop().catch(() => {}).finally(() => {
+      stopAudioViz();
+      finalText = sonioxText() ? sonioxText() + "\n" : finalText;
+      transcriptEl.value = finalText.trim();
+      renderScript(finalText);
+      polishTranscript();
+    });
+  } else {
+    // Give Chrome a moment to deliver the last final result before the mic track is closed.
+    setTimeout(stopAudioViz, 800);
+  }
   clearInterval(timerId);
   $("scope").classList.remove("on");
   $("scopeLabel").textContent = "mic idle";
@@ -544,8 +648,9 @@ function stopConsultation() {
   transcriptEl.value = finalText.trim();
   renderScript(finalText);
   endBtn.disabled = true; demoBtn.disabled = false;
-  // Wait for the final words to land, then let Claude fix misheard medical terms.
-  setTimeout(polishTranscript, 1000);
+  // Wait for the final words to land, then let Claude fix misheard medical terms
+  // (for Soniox this runs after stop() resolves, above).
+  if (!usedSoniox) setTimeout(polishTranscript, 1000);
 }
 
 /* ---------- AI polish: fix misheard medical words + add Doctor:/Patient: labels ---------- */

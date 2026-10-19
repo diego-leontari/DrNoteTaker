@@ -13,7 +13,12 @@ Built in a 3-hour hackathon with **Cline**, **Parallel** and **Composio**, plus 
 ## Features
 
 ### 1. Live consultation transcription
-- Real-time speech-to-text in the browser with the **Web Speech API** (`en-US`), no audio upload needed.
+- **Soniox** real-time speech-to-text (model `stt-rt-v5`) when `SONIOX_API_KEY` is set:
+  - **Speaker diarization:** turns are labelled **Doctor:** / **Patient:** from the actual voices. The first person to speak is treated as the doctor.
+  - **Medical context:** the engine is told it's a medical consultation and given a list of medical terms (ibuprofen, dengue, NS1, petechiae and more), so it gets them right.
+  - **One continuous session:** it doesn't stop after silence, and it reconnects automatically if the network drops.
+  - Your Soniox key stays on the server. The browser only receives a temporary key valid for 5 minutes.
+- **Automatic fallback** to Chrome's built-in **Web Speech API** (`en-US`) if no Soniox key is set or Soniox fails, so recording always works. The waveform shows which engine is in use ("listening · Soniox" or "listening · Chrome").
 - **Live waveform** of your actual microphone signal while recording, with a timer and word/line counters.
 - The transcript appears **line by line as a script**, and clinical terms (symptoms, vitals, medications, travel, tests) are **highlighted** as they're spoken.
 - When lines start with `Doctor:` / `Patient:` they get **DR / PT badges**.
@@ -72,6 +77,7 @@ Browser (Web Speech API, en-US) ──► live transcript (editable)
 ### Tech stack
 - **Backend:** Python, FastAPI, Uvicorn
 - **AI:** Claude via the Anthropic API (default model `claude-haiku-5-5`, thinking off, for speed)
+- **Speech-to-text:** Soniox real-time (`@soniox/client` Web SDK, loaded from a CDN), with Chrome's Web Speech API as fallback
 - **Web research:** Parallel (Responses API first, Task API as fallback), via the `parallel-web` package and `httpx`
 - **Email:** Composio, Gmail toolkit (`GMAIL_SEND_EMAIL`)
 - **Frontend:** a single `static/index.html` with plain HTML, CSS and JavaScript (no build step). Typography and colors follow the Leontari design system: Instrument Sans, Instrument Serif, JetBrains Mono and Bricolage Grotesque, with a violet `#6d28d9` accent.
@@ -88,6 +94,7 @@ Browser (Web Speech API, en-US) ──► live transcript (editable)
   - **Anthropic** (Claude): <https://console.anthropic.com>
   - **Parallel**: <https://platform.parallel.ai>
   - **Composio**, with a Gmail account connected to the Gmail toolkit: <https://app.composio.dev>
+  - **Soniox** (recommended, for accurate transcription): <https://console.soniox.com>
 
 ### 1. Install
 
@@ -114,6 +121,7 @@ Then fill in `.env`:
 | `PARALLEL_API_KEY` | Yes | Parallel: live web research |
 | `COMPOSIO_API_KEY` | For sending | Composio API key |
 | `COMPOSIO_USER_ID` | For sending | The Composio user that has Gmail connected |
+| `SONIOX_API_KEY` | Recommended | Soniox real-time speech-to-text. If empty, Chrome's built-in recognition is used |
 | `ANTHROPIC_MODEL` | No | Overrides the Claude model (default `claude-haiku-5-5`) |
 | `PARALLEL_EFFORT` | No | Research depth: `low` (~5–10 s), `medium` (default, ~15–20 s), `high` (~30–60 s) |
 
@@ -151,6 +159,9 @@ Returns the fictional demo consultation.
 ```json
 {"transcript": "Doctor: Good afternoon, what brings you in today?\n..."}
 ```
+
+### `GET /api/stt-config` and `POST /api/soniox-key`
+The page asks `/api/stt-config` which speech engine to use (`{"provider": "soniox"}` or `"browser"`). When Soniox is on, `/api/soniox-key` creates a short-lived (5-minute) Soniox key for the browser, so your real `SONIOX_API_KEY` never leaves the server.
 
 ### `POST /api/clean`
 Fixes misheard medical words in a raw microphone transcript and adds `Doctor:` / `Patient:` labels. The UI calls this automatically when recording ends.
@@ -250,7 +261,8 @@ luca-live/
 | **The record button is disabled, or "needs Google Chrome"** | Use Chrome and allow microphone access. Use `http://localhost`, because Chrome blocks the mic on plain-HTTP non-localhost addresses. |
 | **Emails fail** | Run `python -m mailer.test_send you@example.com` to see the Composio error. Confirm `COMPOSIO_API_KEY` and `COMPOSIO_USER_ID`, and that Gmail is connected for that user in Composio. |
 | **The console shows `[STUB] email to ...`** | The `mailer/` package or `composio` isn't installed, so emails are only printed. Run `pip install -r requirements.txt`. |
-| **Transcription misses or mishears words** | Speak about an arm's length from the mic, one person at a time, with little background noise. A headset or external mic helps a lot. Chrome's recognizer runs on Google's servers, so a stable connection matters. After **End**, the **✦ AI fix** corrects most misheard medical terms, and you can always **Edit transcript** by hand. |
+| **Transcription misses or mishears words** | Make sure `SONIOX_API_KEY` is set (the waveform should say "listening · Soniox"). Speak about an arm's length from the mic, one person at a time, with little background noise. A headset or external mic helps a lot. Chrome's recognizer runs on Google's servers, so a stable connection matters. After **End**, the **✦ AI fix** corrects most misheard medical terms, and you can always **Edit transcript** by hand. |
+| **"Soniox unavailable", or the waveform says "listening · Chrome"** | Check the server console for `[soniox]` lines. Usually the key is wrong or the account is out of credit. Restart uvicorn after editing `.env`. |
 | **You still see the old design** | Hard-refresh the browser (Cmd+Shift+R / Ctrl+Shift+R). |
 
 ---

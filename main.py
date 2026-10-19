@@ -83,6 +83,38 @@ def send(req: SendRequest):
     }
 
 
+@app.get("/api/stt-config")
+def stt_config():
+    """Tell the frontend which live speech engine to use (Soniox if a key is configured)."""
+    return {"provider": "soniox" if os.getenv("SONIOX_API_KEY") else "browser"}
+
+
+@app.post("/api/soniox-key")
+def soniox_key():
+    """Mint a short-lived Soniox key for the browser. The real SONIOX_API_KEY never leaves the server."""
+    import httpx
+    from fastapi import HTTPException
+
+    api_key = os.getenv("SONIOX_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="SONIOX_API_KEY is not configured")
+    try:
+        resp = httpx.post(
+            "https://api.soniox.com/v1/auth/temporary-api-key",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={"usage_type": "transcribe_websocket", "expires_in_seconds": 300},
+            timeout=15,
+        )
+    except httpx.HTTPError as exc:
+        print(f"[soniox] temporary key request failed: {exc}")
+        raise HTTPException(status_code=502, detail="Could not reach Soniox")
+    if resp.status_code >= 400:
+        print(f"[soniox] temporary key rejected: HTTP {resp.status_code} {resp.text[:200]}")
+        raise HTTPException(status_code=502, detail=f"Soniox rejected the key request (HTTP {resp.status_code})")
+    data = resp.json()
+    return {"api_key": data.get("api_key"), "expires_at": data.get("expires_at")}
+
+
 class CleanRequest(BaseModel):
     transcript: str
 
